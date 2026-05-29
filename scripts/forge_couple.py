@@ -327,6 +327,13 @@ class ForgeCouple(scripts.Script):
 
         assert len(fc_args.keys()) // 2 == LINE_COUNT
 
+        # ===== Store fc_args for LoRA re-patch =====
+        self._fc_args = fc_args
+        self._fc_width = WIDTH
+        self._fc_height = HEIGHT
+        self._fc_is_hr = self.is_hr
+        # ===== Store fc_args for LoRA re-patch =====
+
         unet = p.sd_model.forge_objects.unet
         base_mask = empty_tensor(HEIGHT, WIDTH)
 
@@ -340,4 +347,32 @@ class ForgeCouple(scripts.Script):
         if patched_unet is None:
             self.invalidate(p)
         else:
+            p.sd_model.forge_objects.unet = patched_unet
+
+    def after_lora_activate(self, p):
+        """
+        Called by LoRA Strength Switch (or compatible extensions)
+        after LoRA weights are re-applied mid-sampling.
+        Re-applies the attention-couple UNet patches since
+        load_networks() resets forge_objects.unet to the original.
+        """
+        if getattr(self, "_fc_args", None) is None or not getattr(self, "valid", False):
+            return
+
+        fc_args = self._fc_args
+        WIDTH = getattr(self, "_fc_width", p.width)
+        HEIGHT = getattr(self, "_fc_height", p.height)
+        self.is_hr = getattr(self, "_fc_is_hr", False)
+
+        unet = p.sd_model.forge_objects.unet
+        base_mask = empty_tensor(HEIGHT, WIDTH)
+
+        if is_neo and p.sd_model.model_config.huggingface_repo.endswith("Anima"):
+            patched_unet = AttentionCoupleAnima.patch_dit(
+                unet, base_mask, WIDTH, HEIGHT, fc_args
+            )
+        else:
+            patched_unet = AttentionCouple.patch_unet(unet, base_mask, fc_args)
+
+        if patched_unet is not None:
             p.sd_model.forge_objects.unet = patched_unet
