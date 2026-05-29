@@ -359,6 +359,13 @@ class ForgeCouple(scripts.Script):
         if getattr(self, "_fc_args", None) is None or not getattr(self, "valid", False):
             return
 
+        # Anima: patches SelfCrossAttention.forward globally.
+        # Re-patching would overwrite couple_orig_forward with the patched
+        # forward itself, causing infinite recursion. The global patch
+        # remains effective across UNet resets, so skip re-patching.
+        if is_neo and p.sd_model.model_config.huggingface_repo.endswith("Anima"):
+            return
+
         fc_args = self._fc_args
         WIDTH = getattr(self, "_fc_width", p.width)
         HEIGHT = getattr(self, "_fc_height", p.height)
@@ -366,13 +373,7 @@ class ForgeCouple(scripts.Script):
 
         unet = p.sd_model.forge_objects.unet
         base_mask = empty_tensor(HEIGHT, WIDTH)
-
-        if is_neo and p.sd_model.model_config.huggingface_repo.endswith("Anima"):
-            patched_unet = AttentionCoupleAnima.patch_dit(
-                unet, base_mask, WIDTH, HEIGHT, fc_args
-            )
-        else:
-            patched_unet = AttentionCouple.patch_unet(unet, base_mask, fc_args)
+        patched_unet = AttentionCouple.patch_unet(unet, base_mask, fc_args)
 
         if patched_unet is not None:
             p.sd_model.forge_objects.unet = patched_unet
