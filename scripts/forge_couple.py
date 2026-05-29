@@ -364,6 +364,10 @@ class ForgeCouple(scripts.Script):
         # forward itself, causing infinite recursion. The global patch
         # remains effective across UNet resets, so skip re-patching.
         if is_neo and p.sd_model.model_config.huggingface_repo.endswith("Anima"):
+            # DEBUG: verify global patch is still alive after LoRA switch
+            from backend.nn.anima import SelfCrossAttention
+            is_patched = getattr(SelfCrossAttention.forward, "_couple", False)
+            logger.info(f"[ForgeCouple] after_lora_activate skipped (Anima). Global patch active={is_patched}")
             return
 
         fc_args = self._fc_args
@@ -377,3 +381,4 @@ class ForgeCouple(scripts.Script):
 
         if patched_unet is not None:
             p.sd_model.forge_objects.unet = patched_unet
+            logger.info("[ForgeCouple] after_lora_activate re-patched UNet (non-Anima)")
